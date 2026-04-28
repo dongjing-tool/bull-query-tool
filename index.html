@@ -86,7 +86,7 @@
     <div class="header">
       <h1>公牛查货期查询系统</h1>
       <span id="dataTimeText" style="display:none;">未导入</span>
-      <div class="topActions"><button id="toggleAdminBtn" class="adminToggle" type="button">采购数据维护</button></div>
+      <div class="topActions"><button id="toggleAdminBtn" class="adminToggle" type="button">数据状态</button></div>
     </div>
 
     <div class="grid">
@@ -101,29 +101,19 @@
         <div class="queryTools"><span class="plusIcon">＋</span><span class="thinkText">Ctrl+Enter 查询</span></div><div class="btns"><button id="queryBtn" type="button">查询</button></div>
         <div class="inlineResultBox"><h2>查询结果</h2><div id="resultArea"></div></div>
       </div>
-
       <div class="card full" id="adminPanel" style="display:none;">
-        <h2>采购数据维护</h2>
+        <h2>数据状态</h2>
         <div class="hint">
-          <b>在途/订单表：</b>建议包含 商品编码/物料编码、产品名称/物料描述、事业部/产品分类、订单数量、已转发货单/已发数量、未出货数量/未清数量、其中:备货、预计到货日期、最后发货日期、订单状态。<br>
-          <b>库存表：</b>建议包含 商品编码/货品编码/国标码、库存/可用数/实际库存数、采购在途数。<br>
-          <b>说明：</b>库存实时变动，仅作为参考；最终请以实际仓库/ERP为准。
+          共享版已启用：网页会自动读取同目录下的 <b>transit.xlsx</b> 和 <b>stock.xlsx</b>。<br>
+          以后每天只需要在 GitHub 里替换这两个 Excel 文件，运营打开网页就是最新数据。
         </div>
-        <div class="fileBox"><label><b>上传在途/订单表 Excel</b></label><br><br><input type="file" id="inTransitFile" accept=".xlsx,.xls,.csv" /></div>
-        <div class="fileBox"><label><b>上传库存表 Excel（可选）</b></label><br><br><input type="file" id="stockFile" accept=".xlsx,.xls,.csv" /></div>
-        <div class="btns">
-          <button id="loadBtn" type="button">读取数据</button>
-          <button id="demoBtn" class="secondary" type="button">载入测试数据</button>
-          <button id="resetBtn" class="light" type="button">清空</button>
-        </div>
-        <div class="warnBox">上线使用建议：Excel由采购统一导出并通知数据时间，运营只负责查询，不建议自行导不同口径的数据。</div>
         <div class="statusBar">
           <div class="pill"><b id="transitCount">0</b><span>在途记录</span></div>
           <div class="pill"><b id="stockCount">0</b><span>库存记录</span></div>
           <div class="pill"><b id="skuCount">0</b><span>覆盖SKU</span></div>
           <div class="pill"><b id="queryCount">0</b><span>查询数量</span></div>
         </div>
-        <div id="debugInfo" class="debug"></div>
+        <div id="debugInfo" class="debug">正在加载线上数据...</div>
       </div>
     </div>
   </div>
@@ -250,6 +240,69 @@
         reader.onerror = () => reject(new Error('文件读取失败'));
         reader.readAsArrayBuffer(file);
       });
+    }
+
+    async function readRemoteExcel(candidates) {
+      let lastError = null;
+      for (const filename of candidates) {
+        try {
+          const url = `./${filename}?v=${Date.now()}`;
+          const response = await fetch(url, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`${filename} 不存在或无法读取`);
+          const buffer = await response.arrayBuffer();
+          const workbook = XLSX.read(buffer, { type: 'array' });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          return {
+            filename,
+            rows: XLSX.utils.sheet_to_json(sheet, { defval: '' })
+          };
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError || new Error('没有找到数据文件');
+    }
+
+    async function loadAutoData() {
+      const debug = safeEl('debugInfo');
+      try {
+        if (debug) debug.innerHTML = '正在加载线上数据...';
+
+        const transitData = await readRemoteExcel(['transit.xlsx', 'transit.xlsx.xlsx']);
+        let stockData = { filename: '未上传', rows: [] };
+
+        try {
+          stockData = await readRemoteExcel(['stock.xlsx', 'stock.xlsx.xlsx']);
+        } catch (error) {
+          console.warn('库存表未读取到，将只使用在途表：', error);
+        }
+
+        transitRows = transitData.rows;
+        stockRows = stockData.rows || [];
+        jstRows = [];
+
+        buildSummary();
+        updateCounters();
+
+        const nowText = new Date().toLocaleString('zh-CN', { hour12: false });
+        const dataTime = safeEl('dataTimeText');
+        if (dataTime) dataTime.textContent = nowText;
+
+        if (debug) {
+          debug.innerHTML =
+            `数据加载成功：${escapeHtml(transitData.filename)}（${transitRows.length}条）` +
+            `<br>库存表：${escapeHtml(stockData.filename)}（${stockRows.length}条）` +
+            `<br>加载时间：${escapeHtml(nowText)}` +
+            `<br><span style="color:#64748b;">如果刚替换Excel后数据没更新，请按 Ctrl+F5 强制刷新。</span>`;
+        }
+      } catch (error) {
+        console.error(error);
+        if (debug) {
+          debug.innerHTML =
+            `<span style="color:#991b1b;font-weight:700;">线上数据加载失败：</span>${escapeHtml(error.message)}<br>` +
+            `请确认 GitHub 仓库里有 transit.xlsx，库存表可选 stock.xlsx。`;
+        }
+      }
     }
 
     async function loadFiles() {
@@ -520,7 +573,10 @@
       });
       runSelfTests();
     }
-    document.addEventListener('DOMContentLoaded', bindEvents);
+    document.addEventListener('DOMContentLoaded', () => {
+      bindEvents();
+      loadAutoData();
+    });
   </script>
 </body>
 </html>
