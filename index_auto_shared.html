@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>公牛查货期查询系统</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      zoom: 0.88;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #f7f8fa;
+      color: #0f172a;
+    }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 26px 32px; min-height: 100vh; }
+    .header { background: transparent; color: #0f172a; padding: 0; border-radius: 0; box-shadow: none; border: 0; margin-bottom: 0; display:flex; align-items:center; gap:60px; }
+    .header h1 { margin: 0; font-size: 20px; color:#111827; font-weight: 800; letter-spacing:.2px; }
+    .topActions { position: fixed; right: 22px; top: 18px; display:flex; gap:10px; justify-content:flex-end; margin-top:0; z-index:10; }
+    .adminToggle { background: #ffffff; color:#64748b; border:1px solid #e5e7eb; box-shadow:none; padding:8px 12px; font-size:13px; }
+    .grid { display: block; }
+    .card { background: #fff; border-radius: 18px; padding: 20px; box-shadow: 0 8px 22px rgba(15,23,42,.06); border: 1px solid #e5e7eb; }
+    .card h2 { margin: 0 0 14px; font-size: 18px; color: #111827; }
+    .hint { font-size: 13px; color: #6b7280; line-height: 1.7; margin-bottom: 14px; }
+    .fileBox { border: 1.5px dashed #93c5fd; background: #eff6ff; padding: 16px; border-radius: 14px; margin-bottom: 12px; }
+    input[type=file] { width: 100%; }
+    textarea, input[type=text], select { width: 100%; border: 1px solid #d1d5db; border-radius: 12px; padding: 12px 14px; font-size: 15px; outline: none; background: #fff; }
+    textarea { min-height: 112px; resize: vertical; }
+    textarea:focus, input:focus, select:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+    textarea::placeholder { color: #c7cbd1; }
+    button { border: 0; border-radius: 999px; padding: 10px 18px; font-weight: 700; cursor: pointer; background: #3b82f6; color: white; font-size: 15px; box-shadow: 0 6px 14px rgba(59,130,246,.16); }
+    button.secondary { background: #64748b; box-shadow: none; }
+    button.light { background: #f1f5f9; color: #334155; box-shadow: none; }
+    button.copyBtn { background: #10b981; padding: 8px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
+    .btns { display: inline-flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; margin-left: 12px; vertical-align: middle; }
+    .statusBar { margin-top: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .pill { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 14px; padding: 12px; text-align: center; }
+    .pill b { display: block; font-size: 20px; color: #111827; margin-bottom: 4px; }
+    .pill span { font-size: 12px; color: #6b7280; }
+    .warnBox { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 14px; padding: 12px; margin-top: 12px; line-height: 1.6; font-size: 13px; }
+    .full { grid-column: 1 / -1; }
+    .queryHero { background: transparent; border: 0; border-radius: 0; padding: 0; box-shadow: none; max-width: 760px; margin: 130px auto 0; }
+    .queryLayout { display: block; }
+    .mainInputBox { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 22px; padding: 16px 24px 60px; max-width: 100%; box-shadow: 0 18px 42px rgba(15,23,42,.08); position: relative; }
+    .mainInputBox textarea { max-width: 100%; min-height: 96px; font-size: 16px; background: transparent; border: 0; box-shadow: none; padding: 8px 0; line-height:1.6; }
+    .mainInputBox textarea:focus { border:0; box-shadow:none; }
+    .heroTitle { text-align:left; margin:0 0 14px; font-size:28px; font-weight:900; color:#111827; letter-spacing:.2px; }
+    .queryLabel { font-size:18px; color:#9ca3af; font-weight:700; }
+    .queryTools { position: static; margin-top: 10px; display:inline-flex; align-items:center; gap:10px; color:#111827; }
+    .plusIcon { font-size:30px; line-height:1; }
+    .thinkText { color:#2563eb; font-weight:700; }
+    #queryBtn { position: static; width:auto; height:auto; padding:9px 20px !important; border-radius:999px; background:#111827; color:#fff; font-size:14px !important; box-shadow:0 8px 18px rgba(17,24,39,.18); }
+    #queryBtn::after { content:''; }
+    .resultCards { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 8px; }
+    .resultCard { width: 100%; border: 1px solid #e5e7eb; border-radius: 18px; padding: 14px; background: #fff; box-shadow: 0 10px 24px rgba(15,23,42,.06); }
+    .resultTitle { font-size:20px; font-weight:800; color:#111827; }
+    .resultHead { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; margin-bottom:10px; }
+    .sku { font-size:18px; font-weight:800; color:#111827; display:inline; margin-right:10px; }
+    .productName { color:#4b5563; font-size:13px; line-height:1.5; display:inline; }
+    .metricGrid { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; margin:10px 0; }
+    .metric { background:#f8fafc; border:1px solid #eef2f7; border-radius:12px; padding:8px 6px; text-align:center; }
+    .metric b { display:block; font-size:18px; color:#111827; }
+    .metric span { display:block; margin-top:3px; font-size:13px; color:#64748b; }
+    .replyBox { margin: 10px 0; padding: 14px 18px; background: #fff5f5; border-radius: 12px; border-left: 5px solid #dc2626; max-width: 100%; width: 100%; color: #991b1b; font-weight: 900; font-size:20px; line-height:1.6; white-space: nowrap; overflow-x: auto; }
+    .inlineResultBox { margin-top: 28px; padding-top: 0; border-top: 0; }
+    .inlineResultBox h2 { margin: 0 0 12px; font-size: 19px; color: #111827; font-weight:800; }
+    .tableWrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; background: white; border-radius: 14px; overflow: hidden; }
+    th, td { border-bottom: 1px solid #eef2f7; padding: 12px 10px; text-align: left; font-size: 14px; vertical-align: top; }
+    th { background: #f8fafc; color: #475569; font-weight: 700; white-space: nowrap; }
+    .tag { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .green { background: #dcfce7; color: #166534; }
+    .yellow { background: #fef3c7; color: #92400e; }
+    .red { background: #fee2e2; color: #991b1b; }
+    .blue { background: #dbeafe; color: #1e40af; }
+    .gray { background: #e5e7eb; color: #374151; }
+    .reply { font-weight: 700; color: #111827; line-height: 1.6; min-width: 260px; }
+    .small { font-size: 12px; color: #6b7280; }
+    .debug { margin-top: 10px; color: #6b7280; font-size: 12px; line-height: 1.7; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .statusBar { grid-template-columns: 1fr 1fr; } .metricGrid { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>公牛查货期查询系统</h1>
+      <span id="dataTimeText" style="display:none;">未导入</span>
+      <div class="topActions"><button id="toggleAdminBtn" class="adminToggle" type="button">采购数据维护</button></div>
+    </div>
+
+    <div class="grid">
+      <div class="queryHero full">
+        <h2 class="heroTitle">产品编码</h2>
+        <div class="queryLayout">
+          <div class="mainInputBox">
+            
+            <textarea id="queryInput" placeholder="一行一个编码，例如：&#10;6922646112180&#10;10007492"></textarea>
+          </div>
+        </div>
+        <div class="queryTools"><span class="plusIcon">＋</span><span class="thinkText">Ctrl+Enter 查询</span></div><div class="btns"><button id="queryBtn" type="button">查询</button></div>
+        <div class="inlineResultBox"><h2>查询结果</h2><div id="resultArea"></div></div>
+      </div>
+
+      <div class="card full" id="adminPanel" style="display:none;">
+        <h2>采购数据维护</h2>
+        <div class="hint">
+          <b>在途/订单表：</b>建议包含 商品编码/物料编码、产品名称/物料描述、事业部/产品分类、订单数量、已转发货单/已发数量、未出货数量/未清数量、其中:备货、预计到货日期、最后发货日期、订单状态。<br>
+          <b>库存表：</b>建议包含 商品编码/货品编码/国标码、库存/可用数/实际库存数、采购在途数。<br>
+          <b>说明：</b>库存实时变动，仅作为参考；最终请以实际仓库/ERP为准。
+        </div>
+        <div class="fileBox"><label><b>上传在途/订单表 Excel</b></label><br><br><input type="file" id="inTransitFile" accept=".xlsx,.xls,.csv" /></div>
+        <div class="fileBox"><label><b>上传库存表 Excel（可选）</b></label><br><br><input type="file" id="stockFile" accept=".xlsx,.xls,.csv" /></div>
+        <div class="btns">
+          <button id="loadBtn" type="button">读取数据</button>
+          <button id="demoBtn" class="secondary" type="button">载入测试数据</button>
+          <button id="resetBtn" class="light" type="button">清空</button>
+        </div>
+        <div class="warnBox">上线使用建议：Excel由采购统一导出并通知数据时间，运营只负责查询，不建议自行导不同口径的数据。</div>
+        <div class="statusBar">
+          <div class="pill"><b id="transitCount">0</b><span>在途记录</span></div>
+          <div class="pill"><b id="stockCount">0</b><span>库存记录</span></div>
+          <div class="pill"><b id="skuCount">0</b><span>覆盖SKU</span></div>
+          <div class="pill"><b id="queryCount">0</b><span>查询数量</span></div>
+        </div>
+        <div id="debugInfo" class="debug"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+
+    let transitRows = [];
+    let stockRows = [];
+    let jstRows = [];
+    let jstTransitMap = new Map();
+    let summaryMap = new Map();
+    let stockMap = new Map();
+    let codeAliasMap = new Map();
+    let lastResults = [];
+
+    const aliases = {
+      code: ['商品编码', '货品编码', '国标码', '条码', '69码', '69条码', '商家编码', '编码', 'SKU', 'sku'],
+      materialCode: ['物料', '物料编码', '物料号', 'SAP物料', 'SAP物料号'],
+      name: ['产品名称', '货品名称', '物料名称', '商品名称', '名称', '物料描述'],
+      category: ['事业部', '产品分类', '分类', '系列', '产品线'],
+      orderQty: ['订单数量', '采购数量', '数量'],
+      shippedQty: ['已发数量', '出货数量', '已出货数量', '发货数量', '已转发货单'],
+      backupQty: ['其中:备货', '其中：备货', '备货', '备货件（销售单位）'],
+      unshippedQty: ['未出货数量', '未清数量', '未清'],
+      eta: ['预计到货日期', '到货时间', '预计到货时间', '货期'],
+      shipDate: ['最后发货日期', '发货日期', '最后出货日期'],
+      rawStatus: ['状态', '订单状态', '原始订单状态'],
+      stockQty: ['库存', '实际库存数', '可用数', '进货仓库存', '库存数', '可售库存', '实际库存数'],
+      jstTransitQty: ['采购在途数', '采购在途', '在途数', '在途数量']
+    };
+
+    function el(id) { return document.getElementById(id); }
+    function safeEl(id) { return document.getElementById(id); }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function normalizeHeader(value) { return String(value ?? '').trim().replace(/\s+/g, ''); }
+    function normalizeCode(value) {
+      if (value === null || value === undefined) return '';
+      const text = String(value).trim().replace(/[.]0$/, '');
+      if (!text) return '';
+      return text.replace(/^0+(?=[0-9])/, '') || text;
+    }
+    function addCodeAlias(a, b) {
+      const codeA = normalizeCode(a);
+      const codeB = normalizeCode(b);
+      if (!codeA || !codeB || codeA === codeB) return;
+      if (!codeAliasMap.has(codeA)) codeAliasMap.set(codeA, new Set());
+      if (!codeAliasMap.has(codeB)) codeAliasMap.set(codeB, new Set());
+      codeAliasMap.get(codeA).add(codeB);
+      codeAliasMap.get(codeB).add(codeA);
+    }
+    function getCandidateCodes(inputCode) {
+      const base = normalizeCode(inputCode);
+      const candidates = new Set([base]);
+      const direct = codeAliasMap.get(base);
+      if (direct) direct.forEach(code => candidates.add(code));
+      Array.from(candidates).forEach(code => {
+        const more = codeAliasMap.get(code);
+        if (more) more.forEach(item => candidates.add(item));
+      });
+      return Array.from(candidates).filter(Boolean);
+    }
+    function toNumber(value) {
+      if (value === null || value === undefined || value === '') return 0;
+      const num = Number(String(value).replace(/,/g, '').trim());
+      return Number.isFinite(num) ? num : 0;
+    }
+    function parseDate(value) {
+      if (value === null || value === undefined || value === '' || value === '0000-00-00') return '';
+      if (typeof value === 'number' && window.XLSX && XLSX.SSF) {
+        const dateObj = XLSX.SSF.parse_date_code(value);
+        if (!dateObj) return '';
+        return `${dateObj.y}-${String(dateObj.m).padStart(2, '0')}-${String(dateObj.d).padStart(2, '0')}`;
+      }
+      const normalized = String(value).trim().replace(/\.0$/, '').split(' ')[0].replace(/\//g, '-');
+      return normalized === '0000-00-00' ? '' : normalized;
+    }
+    function fmtDate(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return `${date.getMonth() + 1}月${date.getDate()}日`;
+    }
+    function pick(row, keys) {
+      const headers = Object.keys(row || {});
+      for (const key of keys) {
+        const target = normalizeHeader(key);
+        const found = headers.find(header => normalizeHeader(header) === target);
+        if (found !== undefined) return row[found];
+      }
+      return '';
+    }
+    function pickAllCodes(row) {
+      const codeHeaders = ['商品编码', '货品编码', '国标码', '条码', '69码', '69条码', '商家编码', '款式编码', '辅助码', '物料', '物料编码', '物料号', 'SAP物料', 'SAP物料号', '编码', 'SKU', 'sku'];
+      const headers = Object.keys(row || {});
+      const result = [];
+      for (const header of headers) {
+        const normalized = normalizeHeader(header);
+        if (!codeHeaders.some(name => normalizeHeader(name) === normalized)) continue;
+        const text = String(row[header] ?? '').replace(/，/g, ',').replace(/、/g, ',').replace(/ /g, ',');
+        text.split(',').forEach(item => {
+          const code = normalizeCode(item);
+          if (code) result.push(code);
+        });
+      }
+      return Array.from(new Set(result));
+    }
+
+    function readExcel(file) {
+      return new Promise((resolve, reject) => {
+        if (!file) return resolve([]);
+        const reader = new FileReader();
+        reader.onload = event => {
+          try {
+            if (!window.XLSX) throw new Error('XLSX库未加载，请检查网络或改用本地xlsx库版本。');
+            const workbook = XLSX.read(new Uint8Array(event.target.result), { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            resolve(XLSX.utils.sheet_to_json(sheet, { defval: '' }));
+          } catch (error) { reject(error); }
+        };
+        reader.onerror = () => reject(new Error('文件读取失败'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+
+    async function readSharedExcel(url) {
+      try {
+        const response = await fetch(url + '?v=' + Date.now(), { cache: 'no-store' });
+        if (!response.ok) return [];
+        const buffer = await response.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        return XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      } catch (error) {
+        console.warn('共享数据读取失败：' + url, error);
+        return [];
+      }
+    }
+
+    async function loadSharedData() {
+      try {
+        const [onlineTransitRows, onlineStockRows] = await Promise.all([
+          readSharedExcel('./transit.xlsx'),
+          readSharedExcel('./stock.xlsx')
+        ]);
+        if (!onlineTransitRows.length && !onlineStockRows.length) return;
+        transitRows = onlineTransitRows;
+        stockRows = onlineStockRows;
+        jstRows = [];
+        buildSummary();
+        updateCounters();
+        const timeText = safeEl('dataTimeText');
+        if (timeText) {
+          timeText.style.display = 'inline';
+          timeText.textContent = '数据更新时间：' + new Date().toLocaleString('zh-CN', { hour12: false });
+        }
+        showDebugInfo();
+        console.log('共享数据加载完成', { transitRows: transitRows.length, stockRows: stockRows.length });
+      } catch (error) {
+        console.error('共享数据加载失败', error);
+      }
+    }
+
+    async function loadFiles() {
+      try {
+        const transitFile = el('inTransitFile').files[0];
+        const stockFile = el('stockFile').files[0];
+        if (!transitFile && !stockFile) return alert('请至少上传一个表格');
+        transitRows = await readExcel(transitFile);
+        stockRows = await readExcel(stockFile);
+        jstRows = await readExcel(safeEl('jstFile')?.files?.[0]);
+        buildSummary();
+        updateCounters();
+        el('dataTimeText').textContent = new Date().toLocaleString('zh-CN', { hour12: false });
+        showDebugInfo();
+        alert('数据读取完成');
+      } catch (error) {
+        console.error(error);
+        alert(`读取失败：${error.message}`);
+      }
+    }
+
+    function buildSummary() {
+      summaryMap.clear(); stockMap.clear(); jstTransitMap.clear(); codeAliasMap.clear();
+      for (const row of stockRows) {
+        const allCodes = pickAllCodes(row);
+        if (!allCodes.length) continue;
+        for (let i = 0; i < allCodes.length; i++) for (let j = i + 1; j < allCodes.length; j++) addCodeAlias(allCodes[i], allCodes[j]);
+        const stockQty = toNumber(pick(row, aliases.stockQty));
+        const jstQty = toNumber(pick(row, aliases.jstTransitQty));
+        const name = pick(row, aliases.name);
+        const category = String(pick(row, aliases.category) || '').trim();
+        for (const stockCode of allCodes) {
+          if (!stockMap.has(stockCode)) stockMap.set(stockCode, { stockQty: 0, name: '', category: '' });
+          const current = stockMap.get(stockCode);
+          current.stockQty += stockQty;
+          if (!current.name && name) current.name = String(name);
+          if (!current.category && category) current.category = category;
+          if (jstQty) jstTransitMap.set(stockCode, jstQty);
+        }
+      }
+      for (const row of jstRows) {
+        const allCodes = pickAllCodes(row);
+        const qty = toNumber(pick(row, aliases.jstTransitQty));
+        allCodes.forEach(code => jstTransitMap.set(code, qty));
+      }
+      for (const row of transitRows) {
+        const allCodes = pickAllCodes(row);
+        const code = normalizeCode(pick(row, aliases.materialCode) || pick(row, aliases.code) || allCodes[0]);
+        if (!code) continue;
+        allCodes.forEach(otherCode => addCodeAlias(code, otherCode));
+        const name = String(pick(row, aliases.name) || '').trim();
+        const category = String(pick(row, aliases.category) || '').trim() || '未分类';
+        const orderQty = toNumber(pick(row, aliases.orderQty));
+        const importedShipped = toNumber(pick(row, aliases.shippedQty));
+        const unshippedQty = toNumber(pick(row, aliases.unshippedQty));
+        const shippedQty = importedShipped > 0 ? importedShipped : Math.max(orderQty - unshippedQty, 0);
+        const eta = parseDate(pick(row, aliases.eta));
+        const shipDate = parseDate(pick(row, aliases.shipDate));
+        const backupQty = toNumber(pick(row, aliases.backupQty));
+        const rawStatus = String(pick(row, aliases.rawStatus) || '').trim();
+        let autoStatus = '未知';
+        if (unshippedQty > 0 && shippedQty > 0) autoStatus = '部分发货';
+        else if (unshippedQty > 0) autoStatus = rawStatus || '未出货';
+        else if (shippedQty > 0) autoStatus = '已发货/在路上';
+        if (!summaryMap.has(code)) {
+          summaryMap.set(code, { code, name: '', category: '', orderQty: 0, shippedQty: 0, unshippedQty: 0, backupQty: 0, etaList: [], shipDateList: [], rawStatusSet: new Set(), autoStatusSet: new Set(), detailCount: 0, shipDetails: [] });
+        }
+        const current = summaryMap.get(code);
+        if (!current.name && name) current.name = name;
+        if (!current.category && category) current.category = category;
+        current.orderQty += orderQty;
+        current.shippedQty += shippedQty;
+        current.unshippedQty += unshippedQty;
+        current.backupQty += backupQty;
+        if (eta) current.etaList.push(eta);
+        if (shipDate && shippedQty > 0) { current.shipDateList.push(shipDate); current.shipDetails.push({ date: shipDate, qty: shippedQty }); }
+        if (rawStatus) current.rawStatusSet.add(rawStatus);
+        current.autoStatusSet.add(autoStatus);
+        current.detailCount += 1;
+      }
+    }
+
+    function earliestDate(list) { return !list?.length ? '' : list.slice().sort((a, b) => new Date(a) - new Date(b))[0]; }
+    function latestDate(list) { return !list?.length ? '' : list.slice().sort((a, b) => new Date(b) - new Date(a))[0]; }
+    function daysBetween(dateStr) {
+      if (!dateStr) return 999999;
+      const date = new Date(dateStr);
+      if (Number.isNaN(date.getTime())) return 999999;
+      const today = new Date(); today.setHours(0,0,0,0); date.setHours(0,0,0,0);
+      return Math.floor((today - date) / (24 * 60 * 60 * 1000));
+    }
+    function getRecentDays() { return 7; }
+    function getArrivalOffsetDays(productName) {
+      const name = String(productName || '').toUpperCase();
+      const slowKeywords = ['G59', 'G04Z256', 'G04Z356', 'G04Z456', '地脚插', 'G24', 'G28', '底盒', 'GTQ', 'GTP', 'GTL', 'GTB'];
+      return slowKeywords.some(keyword => name.includes(String(keyword).toUpperCase())) ? 7 : 3;
+    }
+    function addDays(dateStr, days) {
+      const date = new Date(dateStr);
+      if (Number.isNaN(date.getTime())) return '';
+      date.setDate(date.getDate() + days);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+    function buildRecentShipText(item, arrivalOffsetDays, recentDays) {
+      const grouped = {};
+      (item?.shipDetails || []).forEach(detail => {
+        if (!detail.date || daysBetween(detail.date) > recentDays) return;
+        grouped[detail.date] = (grouped[detail.date] || 0) + detail.qty;
+      });
+      const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+      if (!sortedDates.length) return '';
+      const text = sortedDates.map(date => `${fmtDate(date)}发${grouped[date]}个，预计${fmtDate(addDays(date, arrivalOffsetDays))}左右到货`).join('；');
+      return arrivalOffsetDays === 7 ? `${text}。该产品涉及贴码/特殊处理，到货按发货后约7天预估。` : text;
+    }
+    function judge(item, stock, jstTransitQty = 0) {
+      const recentDays = getRecentDays();
+      const stockQty = stock?.stockQty || 0;
+      const eta = earliestDate(item?.etaList || []);
+      const lastShipDate = latestDate(item?.shipDateList || []);
+      const shippedQty = item?.shippedQty || 0;
+      const unshippedQty = item?.unshippedQty || 0;
+      const backupQty = item?.backupQty || 0;
+      const rawStatus = item ? Array.from(item.rawStatusSet).join('、') : '';
+      const autoStatus = item ? Array.from(item.autoStatusSet).join('、') : '';
+      const arrivalOffsetDays = getArrivalOffsetDays(item?.name || stock?.name || '');
+      const isRecentShipped = Boolean(lastShipDate) && daysBetween(lastShipDate) <= recentDays;
+      const recentShipText = buildRecentShipText(item, arrivalOffsetDays, recentDays);
+      let finalStatus = '', tagClass = '', reply = '';
+      if (unshippedQty > 0 && rawStatus.includes('欠货')) {
+        finalStatus = '欠货中'; tagClass = 'red';
+        if(jstTransitQty > 0){
+          reply = `产品欠货中，聚水潭在途${jstTransitQty}，建议等待到货。`;
+        }else{
+          reply = `产品欠货中，近几天无发货，请关注补货情况。`;
+        }
+      } else if (stockQty > 0) {
+        finalStatus = recentShipText ? '近期发货/现货参考' : '现货参考'; tagClass = 'green';
+        reply = recentShipText || `系统库存约${stockQty}，库存实时变动，建议确认实际库存后回复。`;
+      } else if (unshippedQty > 0 && shippedQty > 0) {
+        finalStatus = '部分发货'; tagClass = 'yellow';
+        const backupText = backupQty > 0 ? `，其中备货${backupQty}` : '';
+        reply = `该商品部分已发，已发${shippedQty}，剩余未出货${unshippedQty}${backupText}${eta ? `，预计${fmtDate(eta)}继续到货` : '，暂未给到货时间'}。${recentShipText ? ` 近期发货：${recentShipText}` : ''}`;
+      } else if (unshippedQty > 0) {
+        if (rawStatus.includes('备货')) finalStatus = '备货中';
+        else if (rawStatus.includes('生产')) finalStatus = '生产中';
+        else if (rawStatus.includes('欠货')) finalStatus = '欠货中';
+        else finalStatus = '未出货';
+        tagClass = finalStatus === '欠货中' ? 'red' : 'yellow';
+        const backupText = backupQty > 0 ? `，其中备货${backupQty}` : '';
+        if (finalStatus === '欠货中' && !recentShipText) {
+          reply = jstTransitQty > 0
+            ? `产品欠货中，近几天无发货；聚水潭在途${jstTransitQty}，建议等待到货。`
+            : `产品欠货中，近几天无发货，请关注补货情况。`;
+        } else {
+          reply = `${finalStatus}，未出货数量${unshippedQty}${backupText}${eta ? `，预计${fmtDate(eta)}到货` : '，暂未给到货时间'}。${recentShipText ? ` 近期发货：${recentShipText}` : ''}`;
+        }
+      } else if (isRecentShipped && shippedQty > 0) {
+        finalStatus = '近期已发'; tagClass = 'blue';
+        reply = recentShipText || `近期已发${shippedQty}，最后发货时间${fmtDate(lastShipDate)}，请关注到仓情况。`;
+      } else if (shippedQty > 0) {
+        finalStatus = '旧发货已忽略'; tagClass = 'gray';
+        reply = `近${recentDays}天内无有效发货记录，旧发货不参与货期判断，请确认是否已到仓。`;
+      } else {
+        finalStatus = '无数据/需确认'; tagClass = 'gray';
+        reply = '当前库存表和在途表均未匹配到有效数据，请确认编码或是否未导入。';
+      }
+      return { stockQty, shippedQty, unshippedQty, backupQty, eta, lastShipDate, rawStatus, autoStatus, finalStatus, tagClass, reply };
+    }
+    function parseQueries(text) {
+      const matches = String(text || '').match(/[A-Za-z0-9]+/g) || [];
+      const codes = matches.map(normalizeCode).filter(code => code.length >= 5);
+      return Array.from(new Set(codes));
+    }
+    function runQuery() {
+      const queries = parseQueries(el('queryInput').value);
+      const queryCountEl = safeEl('queryCount');
+      if (queryCountEl) queryCountEl.textContent = String(queries.length);
+      if (!queries.length) return alert('请输入商品编码');
+      lastResults = queries.map(code => {
+        const candidates = getCandidateCodes(code);
+        const matchedCode = candidates.find(candidate => summaryMap.has(candidate)) || candidates.find(candidate => stockMap.has(candidate)) || code;
+        const item = summaryMap.get(matchedCode);
+        const stock = stockMap.get(matchedCode) || stockMap.get(code);
+        const jstTransitQty = jstTransitMap.get(matchedCode) || candidates.map(candidate => jstTransitMap.get(candidate)).find(value => value !== undefined) || 0;
+        const judgment = judge(item, stock, jstTransitQty);
+        return { 商品编码: code, 匹配编码: matchedCode, 产品分类: item?.category || stock?.category || '未分类', 产品名称: item?.name || stock?.name || '', 可用库存: judgment.stockQty, 聚水潭在途: jstTransitQty, 已发数量: judgment.shippedQty, 未出货数量: judgment.unshippedQty, 备货数量: judgment.backupQty, 最早到货: judgment.eta, 最近发货时间: judgment.lastShipDate, 原始状态: judgment.rawStatus, 自动状态: judgment.autoStatus, 最终状态: judgment.finalStatus, 运营回复话术: judgment.reply, 明细条数: item?.detailCount || 0, tagClass: judgment.tagClass };
+      });
+      renderResults(lastResults);
+    }
+    function renderResults(rows) {
+      const resultArea = el('resultArea');
+      if (!rows.length) { resultArea.innerHTML = '<div class="small">暂无结果</div>'; return; }
+      const cards = rows.map((row, index) => `
+        <div class="resultCard">
+          <div class="resultHead"><div><span class="sku">${escapeHtml(row.商品编码)}</span><span class="productName">${row.匹配编码 && row.匹配编码 !== row.商品编码 ? `匹配物料：${escapeHtml(row.匹配编码)}｜` : ''}${escapeHtml(row.产品分类 || '未分类')}｜${row.产品名称 ? escapeHtml(row.产品名称) : '未匹配名称'}</span></div><span class="tag ${escapeHtml(row.tagClass)}">${escapeHtml(row.最终状态)}</span></div>
+          <div class="replyBox">${escapeHtml(row.运营回复话术)}</div>
+          <div class="metricGrid">
+            <div class="metric"><b>${escapeHtml(row.可用库存)}</b><span>库存参考</span></div>
+            <div class="metric"><b>${escapeHtml(row.聚水潭在途 || 0)}</b><span>聚水潭在途</span></div>
+            <div class="metric"><b>${escapeHtml(row.备货数量 || 0)}</b><span>公牛备货中数量</span></div>
+            <div class="metric"><b>${escapeHtml(row.未出货数量)}</b><span>未出货</span></div>
+          </div>
+          <div class="small" style="margin-bottom:10px;">最早到货：${row.最早到货 ? escapeHtml(fmtDate(row.最早到货)) : '无'}　｜　最近发货：${row.最近发货时间 ? escapeHtml(fmtDate(row.最近发货时间)) : '无'}<br>原始状态：${escapeHtml(row.原始状态 || row.自动状态 || '无')}</div>
+          <div class="btns" style="margin-top:12px;"><button class="copyBtn" type="button" data-index="${index}">复制话术</button></div>
+        </div>`).join('');
+      resultArea.innerHTML = `<div class="resultCards">${cards}</div>`;
+      resultArea.querySelectorAll('.copyBtn').forEach(button => {
+        button.addEventListener('click', () => copyText(lastResults[Number(button.getAttribute('data-index'))]?.运营回复话术 || ''));
+      });
+    }
+    function copyText(text) {
+      if (!text) return alert('没有可复制内容');
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert('已复制话术')).catch(() => fallbackCopy(text));
+      else fallbackCopy(text);
+    }
+    function fallbackCopy(text) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text; textarea.style.position = 'fixed'; textarea.style.left = '-9999px'; document.body.appendChild(textarea); textarea.focus(); textarea.select();
+      try { document.execCommand('copy'); alert('已复制话术'); } catch { alert('复制失败，请手动复制'); }
+      document.body.removeChild(textarea);
+    }
+    function resetAll() {
+      transitRows = []; stockRows = []; jstRows = []; jstTransitMap.clear(); summaryMap.clear(); stockMap.clear(); codeAliasMap.clear(); lastResults = [];
+      ['inTransitFile', 'stockFile', 'queryInput', 'resultArea', 'debugInfo'].forEach(id => { const node = safeEl(id); if (node) node.value !== undefined ? node.value = '' : node.innerHTML = ''; });
+      const dataTime = safeEl('dataTimeText'); if (dataTime) dataTime.textContent = '未导入';
+      ['transitCount', 'stockCount', 'skuCount', 'queryCount'].forEach(id => { const node = safeEl(id); if (node) node.textContent = '0'; });
+    }
+    function updateCounters() {
+      const transit = safeEl('transitCount'); if (transit) transit.textContent = String(transitRows.length);
+      const stock = safeEl('stockCount'); if (stock) stock.textContent = String(stockRows.length);
+      const sku = safeEl('skuCount'); if (sku) sku.textContent = String(new Set([...summaryMap.keys(), ...stockMap.keys()]).size);
+    }
+    function showDebugInfo() {
+      const debug = safeEl('debugInfo'); if (!debug) return;
+      const transitHeaders = transitRows.length ? Object.keys(transitRows[0]).join('、') : '未上传';
+      const stockHeaders = stockRows.length ? Object.keys(stockRows[0]).join('、') : '未上传';
+      debug.innerHTML = `识别到的在途表字段：${escapeHtml(transitHeaders)}<br>识别到的库存表字段：${escapeHtml(stockHeaders)}`;
+    }
+    function loadDemoData() {
+      transitRows = [
+        { '物料编码': '11406816', '物料描述': 'GNE-P108E(F)盒装黑PDU', '事业部': 'E系列', '订单数量': 216, '已转发货单': 216, '未出货数量': 0, '其中:备货': 60, '最后发货日期': '2026-04-26', '订单状态': '已发货' },
+        { '物料编码': '11406816', '物料描述': 'GNE-P108E(F)盒装黑PDU', '事业部': 'E系列', '订单数量': 60, '已转发货单': 0, '未出货数量': 0, '其中:备货': 60, '最后发货日期': '0000-00-00', '订单状态': '备货中' }
+      ];
+      stockRows = [{ '国标码': '11406816', '商品编码': '6977481121729', '产品名称': 'GNE-P108E(F)盒装黑PDU', '产品分类': 'E系列', '可用数': 386, '采购在途数': 276 }];
+      buildSummary(); updateCounters(); showDebugInfo();
+      el('dataTimeText').textContent = new Date().toLocaleString('zh-CN', { hour12: false }) + '（测试数据）';
+      el('queryInput').value = '11406816'; runQuery();
+    }
+    function runSelfTests() {
+      console.assert(normalizeCode('000000000011406816') === '11406816', 'normalizeCode 去前导0失败');
+      console.assert(parseQueries('11406816，11406816 abc 1234').length === 2, 'parseQueries 去重/过滤失败');
+      console.assert(getArrivalOffsetDays('G59产品') === 7, '特殊产品+7天失败');
+      console.assert(getArrivalOffsetDays('普通产品') === 3, '普通产品+3天失败');
+    }
+    function bindEvents() {
+      const toggle = safeEl('toggleAdminBtn');
+      if (toggle) toggle.addEventListener('click', () => {
+        const panel = el('adminPanel');
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        if (panel.style.display === 'block') panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      safeEl('loadBtn')?.addEventListener('click', loadFiles);
+      safeEl('demoBtn')?.addEventListener('click', loadDemoData);
+      safeEl('resetBtn')?.addEventListener('click', resetAll);
+      safeEl('queryBtn')?.addEventListener('click', runQuery);
+      safeEl('queryInput')?.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) runQuery();
+      });
+      runSelfTests();
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      bindEvents();
+      loadSharedData();
+    });
+  </script>
+</body>
+</html>
