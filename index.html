@@ -263,8 +263,8 @@
           resultArea.innerHTML = '<div class="small">正在加载线上数据...</div>';
         }
         const [transitData, stockData] = await Promise.all([
-          readExcelFromUrl('./transit.xlsx'),
-          readExcelFromUrl('./stock.xlsx')
+          readExcelFromUrl('https://dongjing-tool.github.io/bull-query-tool/transit.xlsx?v=' + Date.now()),
+          readExcelFromUrl('https://dongjing-tool.github.io/bull-query-tool/stock.xlsx?v=' + Date.now())
         ]);
         transitRows = transitData;
         stockRows = stockData;
@@ -279,7 +279,7 @@
       } catch (error) {
         console.error(error);
         if (resultArea) {
-          resultArea.innerHTML = `<div class="replyBox">线上数据读取失败，请确认 GitHub 中是否存在 transit.xlsx 和 stock.xlsx，且文件名完全正确。</div>`;
+          resultArea.innerHTML = `<div class="replyBox">线上数据读取失败，请等待 GitHub 刷新 30~60 秒后再试，或按 Ctrl+F5 强制刷新网页。</div>`;
         }
       }
     }
