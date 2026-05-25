@@ -107,7 +107,7 @@
         <div class="hint">
           <b>共享版数据来源：</b>系统自动读取 GitHub 仓库中的 <b>transit.xlsx</b> 和 <b>stock.xlsx</b>。<br>
           <b>每日更新方法：</b>只需要在 GitHub 里上传并覆盖这两个同名文件，然后点 Commit changes。<br>
-          <b>注意：</b>文件名必须完全一致，不能写成 transit.xlsx.xlsx / stock.xlsx.xlsx。
+          <b>注意：</b>文件名必须完全一致，不能写成 transit.xlsx / stock.xlsx。
         </div>
         <div class="warnBox">运营无需上传数据，打开网页即可查询。上传新数据后，运营刷新网页即可看到最新数据。</div>
         <div class="statusBar">
@@ -247,7 +247,7 @@
 
 
     async function readExcelFromUrl(url) {
-      const finalUrl = `${url}?v=${Date.now()}`;
+      const finalUrl = `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
       const response = await fetch(finalUrl, { cache: 'no-store' });
       if (!response.ok) throw new Error(`${url} 读取失败：${response.status}`);
       const buffer = await response.arrayBuffer();
@@ -263,8 +263,8 @@
           resultArea.innerHTML = '<div class="small">正在加载线上数据...</div>';
         }
         const [transitData, stockData] = await Promise.all([
-          readExcelFromUrl('https://dongjing-tool.github.io/bull-query-tool/transit.xlsx?v=' + Date.now()),
-          readExcelFromUrl('https://dongjing-tool.github.io/bull-query-tool/stock.xlsx?v=' + Date.now())
+          readExcelFromUrl('https://dongjing-tool.github.io/bull-query-tool/transit.xlsx'),
+          readExcelFromUrl('https://dongjing-tool.github.io/bull-query-tool/stock.xlsx')
         ]);
         transitRows = transitData;
         stockRows = stockData;
