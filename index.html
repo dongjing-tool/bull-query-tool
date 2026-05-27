@@ -142,13 +142,13 @@
 
     const aliases = {
       code: ['商品编码', '货品编码', '国标码', '条码', '69码', '69条码', '商家编码', '编码', 'SKU', 'sku'],
-      materialCode: ['物料', '物料编码', '物料号', 'SAP物料', 'SAP物料号'],
+      materialCode: ['物料', '物料号', '物料编码', 'SAP物料', 'SAP物料号'],
       name: ['产品名称', '货品名称', '物料名称', '商品名称', '名称', '物料描述'],
       category: ['事业部', '产品分类', '分类', '系列', '产品线'],
       orderQty: ['订单数量', '采购数量', '数量'],
-      shippedQty: ['已发数量', '出货数量', '已出货数量', '发货数量', '已转发货单'],
+      shippedQty: ['已发数量', '出货数量', '已出货数量', '发货数量', '发货数', '已转发货单'],
       backupQty: ['其中:备货', '其中：备货', '备货', '备货件（销售单位）'],
-      unshippedQty: ['未出货数量', '未清数量', '未清'],
+      unshippedQty: ['未出货数量', '未清数量', '未清数', '未清'],
       eta: ['预计到货日期', '到货时间', '预计到货时间', '货期'],
       shipDate: ['最后发货日期', '发货日期', '最后出货日期'],
       rawStatus: ['状态', '订单状态', '原始订单状态'],
@@ -235,6 +235,22 @@
       return Array.from(new Set(result));
     }
 
+    function fixSheetRange(sheet) {
+      const cells = Object.keys(sheet || {}).filter(key => /^[A-Z]+[0-9]+$/.test(key));
+      if (!cells.length || !window.XLSX) return sheet;
+      let minR = 999999, minC = 999999, maxR = 0, maxC = 0;
+      cells.forEach(addr => {
+        const point = XLSX.utils.decode_cell(addr);
+        minR = Math.min(minR, point.r);
+        minC = Math.min(minC, point.c);
+        maxR = Math.max(maxR, point.r);
+        maxC = Math.max(maxC, point.c);
+      });
+      sheet['!ref'] = XLSX.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+      return sheet;
+    }
+
+
     function readExcel(file) {
       return new Promise((resolve, reject) => {
         if (!file) return resolve([]);
@@ -243,8 +259,13 @@
           try {
             if (!window.XLSX) throw new Error('XLSX库未加载，请检查网络或改用本地xlsx库版本。');
             const workbook = XLSX.read(new Uint8Array(event.target.result), { type: 'array' });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            resolve(XLSX.utils.sheet_to_json(sheet, { defval: '' }));
+            let rows = [];
+            workbook.SheetNames.forEach(sheetName => {
+              const sheet = fixSheetRange(workbook.Sheets[sheetName]);
+              const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+              if (json.length) rows = rows.concat(json);
+            });
+            resolve(rows);
           } catch (error) { reject(error); }
         };
         reader.onerror = () => reject(new Error('文件读取失败'));
@@ -274,38 +295,35 @@
     function buildSummary() {
       summaryMap.clear(); stockMap.clear(); jstTransitMap.clear(); codeAliasMap.clear();
 
-      // 库存表：以【国标码】为主，其次【商品编码】；全部去掉前导0，防止格式不一致。
+      // 库存表：只用【商品编码】和【国标码】建索引，避免辅助码串货。
       for (const row of stockRows) {
-        const gbCode = normalizeCode(pick(row, ['国标码', '69码', '条码']));
         const goodsCode = normalizeCode(pick(row, ['商品编码', '货品编码', '编码']));
-        const name = pick(row, aliases.name);
-        const category = String(pick(row, aliases.category) || '').trim();
+        const gbCode = normalizeCode(pick(row, ['国标码', '69码', '69条码', '条码']));
         const stockQty = toNumber(pick(row, aliases.stockQty));
         const jstQty = toNumber(pick(row, aliases.jstTransitQty));
+        const name = pick(row, aliases.name);
+        const category = String(pick(row, aliases.category) || '').trim();
 
-        const keys = Array.from(new Set([gbCode, goodsCode].filter(Boolean)));
-        if (!keys.length) continue;
-
-        for (const key of keys) {
-          if (!stockMap.has(key)) {
-            stockMap.set(key, { stockQty: 0, name: '', category: '', jstQty: 0, gbCode, goodsCode });
-          }
-          const current = stockMap.get(key);
+        const keys = Array.from(new Set([goodsCode, gbCode].filter(Boolean)));
+        for (const stockCode of keys) {
+          if (!stockMap.has(stockCode)) stockMap.set(stockCode, { stockQty: 0, name: '', category: '', jstQty: 0 });
+          const current = stockMap.get(stockCode);
           current.stockQty += stockQty;
           current.jstQty += jstQty;
           if (!current.name && name) current.name = String(name);
           if (!current.category && category) current.category = category;
-          if (jstQty) jstTransitMap.set(key, (jstTransitMap.get(key) || 0) + jstQty);
+          if (jstQty) jstTransitMap.set(stockCode, (jstTransitMap.get(stockCode) || 0) + jstQty);
         }
       }
 
-      // 在途表：以【物料】为主，自动去掉前导0。
-      // 例如 000000000020004295 会转换为 20004295，再与库存表【国标码】精准匹配。
+      // 在途表：用【商品编码】、【国标码】、【物料/物料号】建索引。
+      // 判断逻辑不变，只改变数据进入 summaryMap 的匹配键。
       for (const row of transitRows) {
         const materialCode = normalizeCode(pick(row, aliases.materialCode));
-        const goodsCode = normalizeCode(pick(row, aliases.code));
-        const code = materialCode || goodsCode;
-        if (!code) continue;
+        const goodsCode = normalizeCode(pick(row, ['商品编码', '货品编码', '编码']));
+        const gbCode = normalizeCode(pick(row, ['国标码', '69码', '69条码', '条码']));
+        const codes = Array.from(new Set([goodsCode, gbCode, materialCode].filter(Boolean)));
+        if (!codes.length) continue;
 
         const name = String(pick(row, aliases.name) || '').trim();
         const category = String(pick(row, aliases.category) || '').trim() || '未分类';
@@ -323,31 +341,23 @@
         else if (unshippedQty > 0) autoStatus = rawStatus || '未出货';
         else if (shippedQty > 0) autoStatus = '已发货/在路上';
 
-        if (!summaryMap.has(code)) {
-          summaryMap.set(code, {
-            code, name: '', category: '',
-            orderQty: 0, shippedQty: 0, unshippedQty: 0, backupQty: 0,
-            etaList: [], shipDateList: [],
-            rawStatusSet: new Set(), autoStatusSet: new Set(),
-            detailCount: 0, shipDetails: []
-          });
+        for (const code of codes) {
+          if (!summaryMap.has(code)) {
+            summaryMap.set(code, { code, name: '', category: '', orderQty: 0, shippedQty: 0, unshippedQty: 0, backupQty: 0, etaList: [], shipDateList: [], rawStatusSet: new Set(), autoStatusSet: new Set(), detailCount: 0, shipDetails: [] });
+          }
+          const current = summaryMap.get(code);
+          if (!current.name && name) current.name = name;
+          if (!current.category && category) current.category = category;
+          current.orderQty += orderQty;
+          current.shippedQty += shippedQty;
+          current.unshippedQty += unshippedQty;
+          current.backupQty += backupQty;
+          if (eta) current.etaList.push(eta);
+          if (shipDate && shippedQty > 0) { current.shipDateList.push(shipDate); current.shipDetails.push({ date: shipDate, qty: shippedQty }); }
+          if (rawStatus) current.rawStatusSet.add(rawStatus);
+          current.autoStatusSet.add(autoStatus);
+          current.detailCount += 1;
         }
-
-        const current = summaryMap.get(code);
-        if (!current.name && name) current.name = name;
-        if (!current.category && category) current.category = category;
-        current.orderQty += orderQty;
-        current.shippedQty += shippedQty;
-        current.unshippedQty += unshippedQty;
-        current.backupQty += backupQty;
-        if (eta) current.etaList.push(eta);
-        if (shipDate && shippedQty > 0) {
-          current.shipDateList.push(shipDate);
-          current.shipDetails.push({ date: shipDate, qty: shippedQty });
-        }
-        if (rawStatus) current.rawStatusSet.add(rawStatus);
-        current.autoStatusSet.add(autoStatus);
-        current.detailCount += 1;
       }
     }
 
@@ -449,34 +459,11 @@
       if (!queries.length) return alert('请输入商品编码');
       lastResults = queries.map(code => {
         const exactCode = normalizeCode(code);
-
-        // 精准匹配：库存表国标码/商品编码、在途表物料去0后，统一用 exactCode 匹配。
-        // 不再使用辅助码模糊匹配，避免查A产品串到B产品。
         const item = summaryMap.get(exactCode);
         const stock = stockMap.get(exactCode);
-
         const jstTransitQty = jstTransitMap.get(exactCode) || stock?.jstQty || 0;
         const judgment = judge(item, stock, jstTransitQty);
-
-        return {
-          商品编码: code,
-          匹配编码: exactCode,
-          产品分类: item?.category || stock?.category || '未分类',
-          产品名称: item?.name || stock?.name || '',
-          可用库存: judgment.stockQty,
-          聚水潭在途: jstTransitQty,
-          已发数量: judgment.shippedQty,
-          未出货数量: judgment.unshippedQty,
-          备货数量: judgment.backupQty,
-          最早到货: judgment.eta,
-          最近发货时间: judgment.lastShipDate,
-          原始状态: judgment.rawStatus,
-          自动状态: judgment.autoStatus,
-          最终状态: judgment.finalStatus,
-          运营回复话术: judgment.reply,
-          明细条数: item?.detailCount || 0,
-          tagClass: judgment.tagClass
-        };
+        return { 商品编码: code, 匹配编码: exactCode, 产品分类: item?.category || stock?.category || '未分类', 产品名称: item?.name || stock?.name || '', 可用库存: judgment.stockQty, 聚水潭在途: jstTransitQty, 已发数量: judgment.shippedQty, 未出货数量: judgment.unshippedQty, 备货数量: judgment.backupQty, 最早到货: judgment.eta, 最近发货时间: judgment.lastShipDate, 原始状态: judgment.rawStatus, 自动状态: judgment.autoStatus, 最终状态: judgment.finalStatus, 运营回复话术: judgment.reply, 明细条数: item?.detailCount || 0, tagClass: judgment.tagClass };
       });
       renderResults(lastResults);
     }
